@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UF200SA Web Control System - (주)해치텍</title>
+    <!-- OpenCV.js for Vision processing -->
+    <script async src="https://docs.opencv.org/4.5.0/opencv.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-body: #202124;
+            --bg-panel: #2d2d2d;
+            --bg-input: #3d3d3d;
+            --bg-btn: #3a3a3a;
+            --fg-text: #e0e0e0;
+            --fg-active: #00ff00;
+            --fg-error: #ff0000;
+            --bg-kb-panel: #4a4c52;
+            --btn-special-st: #00a86b;
+            --btn-special-sp: #cc5555;
+            --btn-special-en: #4169e1;
+            --key-bg: #f5f5f5;
+            --key-fg: #000;
+            --font-main: 'Segoe UI', 'Arial', sans-serif;
+            
+            --border-radius-ui: 6px;
+            --border-radius-btn: 4px;
+        }
+        
+        body.theme-dark {
+            --bg-kb-panel: #121212; --bg-btn: #1e1e1e; --fg-text: #00ff00; --key-bg: #2d2d2d; --key-fg: #e0e0e0;
+            --btn-special-st: #006400; --btn-special-sp: #8b0000; --btn-special-en: #00008b;
+        }
+        body.theme-neon {
+            --bg-kb-panel: #000000; --bg-btn: #1a1a1a; --fg-text: #ff00ff; --key-bg: #111111; --key-fg: #00ffff;
+            --btn-special-st: #2ece10; --btn-special-sp: #e50036; --btn-special-en: #03c3e5;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-body);
+            color: var(--fg-text);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            
+            /* 드래그 및 텍스트 선택 방지 (소스 보호) */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        /* 입력창은 선택 가능하도록 예외 처리 */
+        input, textarea, select {
+            -webkit-user-select: auto;
+            -moz-user-select: auto;
+            -ms-user-select: auto;
+            user-select: auto;
+        }
+
+        /* Navbar - 1열로 통합된 상단바 */
+        .navbar {
+            background-color: #1e1e1e;
+            display: flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-bottom: 1px solid #000;
+            user-select: none;
+            gap: 10px;
+        }
+        .nav-item { margin-right: 5px; cursor: pointer; position: relative; font-size: 12px; font-weight: 500; white-space: nowrap; }
+        .nav-item:hover .dropdown { display: block; }
+        .dropdown {
+            display: none; position: absolute; top: 100%; left: 0;
+            background-color: #2d2d2d; min-width: 200px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5); z-index: 1000; border: 1px solid #444;
+        }
+        .dropdown-item { padding: 10px 15px; border-bottom: 1px solid #333; transition: background 0.2s; font-size: 12px;}
+        .dropdown-item:hover { background-color: #4a4a4a; }
+        
+        /* Nav Controls */
+        .nav-controls {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px;
+            margin-left: 15px;
+            border-left: 1px solid #444;
+            padding-left: 15px;
+        }
+        .conn-indicator { color: var(--fg-error); font-size: 12px; width: 16px; text-align: center; }
+        .conn-indicator.active { color: var(--fg-active); }
+        select, input[type="text"], input[type="password"] {
+            background: var(--bg-input); color: white; border: 1px solid #555;
+            padding: 2px 6px; border-radius: 3px; outline: none; font-family: monospace; font-size: 11px;
+        }
+        button {
+            background: #4a4a4a; color: white; border: none; padding: 4px 8px; font-size: 11px;
+            border-radius: var(--border-radius-btn); cursor: pointer; font-weight: bold;
+            transition: all 0.2s; user-select: none; white-space: nowrap;
+        }
+        button:hover { filter: brightness(1.2); }
+        button:active { transform: scale(0.96); }
+        button.btn-danger { background: var(--btn-special-sp); }
+        button.btn-success { background: var(--btn-special-st); }
+
+        /* Main Workspace: Row Direction */
+        .workspace { display: flex; flex-direction: row; flex: 1; margin: 5px; gap: 0; min-height: 0; }
+        
+        /* Left Pane (Monitor + Keyboard) */
+        .left-pane {
+            display: flex; flex-direction: column; width: 75%; flex: none; min-width: 10%; position: relative;
+        }
+        
+        /* Vertical & Horizontal Resizers */
+        .resizer {
+            width: 6px;
+            background: #333;
+            cursor: col-resize;
+            border-radius: 3px;
+            margin: 0 4px;
+            transition: background 0.2s;
+            z-index: 10;
+            flex-shrink: 0;
+        }
+        .resizer:hover, .resizer.active { background: var(--fg-active); }
+        
+        .resizer-h {
+            height: 6px;
+            background: #333;
+            cursor: row-resize;
+            border-radius: 3px;
+            margin: 4px 0;
+            transition: background 0.2s;
+            z-index: 10;
+            flex-shrink: 0;
+        }
+        .resizer-h:hover, .resizer-h.active { background: var(--fg-active); }
+
+        /* Monitor Panel */
+        .monitor-panel {
+            flex: 4;
+            background: #000; position: relative; border-radius: var(--border-radius-ui);
+            overflow: hidden; border: 2px solid #555; 
+            min-height: 20%; width: 100%;
+        }
+        
+        .canvas-container { 
+            position: absolute; 
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100%; height: 100%; 
+            background: #000; 
+            cursor: default;
+            box-sizing: border-box;
+        }
+
+        #video-element { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; z-index: -1; }
+        #video-canvas, #grid-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #grid-canvas { pointer-events: none; }
+
+        /* Keyboard Panel */
+        .keyboard-panel {
+            flex: 2; min-height: 150px;
+            background: var(--bg-kb-panel); border-radius: var(--border-radius-ui);
+            border: 2px outset #555; display: flex; padding: 5px; gap: 5px; width: 100%;
+        }
+        .kb-left { flex: 2; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto repeat(6, 1fr); gap: 4px; }
+        .kb-center { flex: 10; display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(6, 1fr); gap: 4px; }
+        .kb-right { flex: 3; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: auto repeat(5, 1fr); gap: 4px; }
+        
+        .kb-indicator-row { display: flex; grid-column: 1 / -1; align-items: flex-end; padding-bottom: 2px; }
+        .ind-bar { height: 6px; background: #1e1e1e; flex: 1; margin: 0 5px; border-radius: 2px; border: 1px inset #000; }
+        .ind-bar.active { background: #00ff00; box-shadow: 0 0 5px #00ff00; }
+        .ind-bar.warning { background: #ffa500; box-shadow: 0 0 5px #ffa500; }
+
+        .k-btn {
+            background: var(--bg-btn); color: var(--fg-text); border: 2px outset #666;
+            border-radius: var(--border-radius-btn); display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 8.4px;
+            text-align: center; cursor: pointer; user-select: none;
+            transition: background 0.1s; position: relative; overflow: hidden;
+        }
+        .k-btn:active { border-style: inset; padding-top: 2px; padding-left: 2px; }
+        .k-btn.active-hold { background: var(--fg-active) !important; color: #000 !important; border-style: inset; }
+        
+        .k-btn.key-std { background: var(--key-bg); color: var(--key-fg); }
+        .k-btn.bg-start { background: var(--btn-special-st); color: #fff; }
+        .k-btn.bg-stop { background: var(--btn-special-sp); color: #fff; }
+        .k-btn.bg-ent { background: var(--btn-special-en); color: #fff; }
+        .k-btn.bg-data { background: #d4c98c; color: #000; }
+        .k-btn.bg-shift { background: #d3d3d3; color: #000; }
+
+        .col-span-2 { grid-column: span 2; }
+        .col-span-3 { grid-column: span 3; }
+        .col-span-4 { grid-column: span 4; }
+        .row-span-2 { grid-row: span 2; }
+
+        /* Log Panel (Full Height on the right) */
+        .log-panel {
+            flex: 1; min-width: 0;
+            background: #111; border-radius: var(--border-radius-ui); border: 1px solid #444;
+            display: flex; flex-direction: column; font-family: 'Consolas', monospace; font-size: 11px;
+        }
+        .log-header { 
+            padding: 4px 8px; background: #222; border-bottom: 1px solid #444; 
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 4px;
+        }
+        #log-status { color: #0f0; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; }
+        
+        /* Macro & TX/RX Controls in Log Header */
+        .log-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+        .macro-controls { display: flex; gap: 3px; }
+        .log-controls label { color: white; display: flex; align-items: center; gap: 3px; cursor: pointer; }
+        
+        .log-content { flex: 1; overflow-y: auto; padding: 4px 5px; white-space: pre-wrap; }
+        .log-tx { color: #0f0; } .log-rx { color: #f00; } .log-sys { color: #ccc; } .log-macro { color: #ff0; }
+        
+        /* Modal Base */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 9999;
+        }
+        .modal {
+            background: var(--bg-panel); border: 1px solid #555; border-radius: 8px;
+            padding: 20px; min-width: 300px; max-width: 90%; max-height: 90%; overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .modal h2 { border-bottom: 2px solid #555; padding-bottom: 10px; margin-bottom: 15px; font-size: 18px; }
+        .modal-close { float: right; cursor: pointer; color: #ff5555; font-size: 20px; font-weight: bold; }
+        
+        /* Ripple Effect */
+        .ripple {
+            position: absolute; border-radius: 50%; transform: scale(0);
+            animation: ripple-anim 0.6s linear; background-color: rgba(0, 255, 255, 0.4);
+        }
+        @keyframes ripple-anim { to { transform: scale(4); opacity: 0; } }
+
+        /* Auth Overlay */
+        #auth-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #1e1e1e; z-index: 99999; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; color: white;
+        }
+        .auth-box {
+            background: #2d2d2d; padding: 40px; border-radius: 8px; border: 1px solid #555; 
+            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .auth-box input {
+            padding: 10px; width: 220px; text-align: center; margin-bottom: 20px; 
+            font-size: 16px; border: 1px solid #555; background: #111; color: #0f0; border-radius: 4px;
+        }
+        .auth-box button {
+            padding: 10px 24px; font-size: 14px; background: #4169e1; color: white;
+            border: none; border-radius: 4px; cursor: pointer; transition: filter 0.2s;
+        }
+        .auth-box button:hover { filter: brightness(1.2); }
+    </style>
+</head>
+<body oncontextmenu="return false" ondragstart="return false">
+
+    <!-- 접속 패스워드 레이어 -->
+    <div id="auth-overlay">
+        <h2 style="margin-bottom: 20px;">UF200SA Web Control System</h2>
+        <div class="auth-box">
+            <p style="margin-bottom: 20px; font-size: 14px; color: #ccc;">시스템에 접근하려면 비밀번호를 입력하세요.</p>
+            <input type="password" id="auth-pwd" placeholder="Password" onkeypress="if(event.key === 'Enter') checkAuth()">
+            <br>
+            <button onclick="checkAuth()">Login</button>
+            <p id="auth-err" style="color: #ff5555; font-size: 13px; margin-top: 20px; display: none;">비밀번호가 일치하지 않습니다.</p>
+        </div>
+    </div>
+
+    <!-- Top Navigation -->
+    <nav class="navbar">
+        <div class="nav-item">File
+            <div class="dropdown">
+                <div class="dropdown-item" onclick="saveSettings()">Save Settings</div>
+                <div class="dropdown-item" onclick="alert('Web Application - Close tab to exit')">Exit</div>
+            </div>
+        </div>
+        <div class="nav-item">View
+            <div class="dropdown">
+                <div class="dropdown-item" onclick="toggleModal('themeModal')">Keyboard Menu / Themes</div>
+                <div class="dropdown-item" id="menu-grid-adjust" onclick="toggleGridAdjust()">Matrix Line Adjust: OFF</div>
+                <div class="dropdown-item" id="menu-grid-toggle" onclick="toggleGrid()">Touch Grid ON/OFF</div>
+                <div class="dropdown-item" onclick="toggleLogPanel()">Toggle Log Panel (좌표창 ON/OFF)</div>
+                <div class="dropdown-item" onclick="clearLog()">Clear TTL Log</div>
+                <div class="dropdown-item" onclick="downloadLog()">Save TTL Log</div>
+            </div>
+        </div>
+        <div class="nav-item">Tools
+            <div class="dropdown">
+                <div class="dropdown-item" onclick="toggleMacroUI()">Toggle Macro Controls</div>
+                <div class="dropdown-item" id="menu-pc-sync" onclick="togglePCKeyboard()">PC Keyboard Sync ON/OFF</div>
+                <div class="dropdown-item" onclick="toggleModal('mappingModal')">Debugging Mode (Mapping)</div>
+                <div class="dropdown-item" style="color: #ff5555;" onclick="resetSettings()">Setting Reset</div>
+                <div class="dropdown-item" onclick="showAbout()">Information</div>
+            </div>
+        </div>
+        
+        <div class="nav-controls">
+            <i class="fas fa-circle conn-indicator" id="ind-conn"></i>
+            <select id="conn-mode" onchange="updateConnMode()">
+                <option value="COM">COM (WebSerial)</option>
+                <option value="WIFI">WIFI (WebSocket)</option>
+            </select>
+            
+            <div id="com-settings">
+                <select id="baud-rate">
+                    <option value="9600" selected>9600</option>
+                    <option value="19200">19200</option>
+                    <option value="38400">38400</option>
+                    <option value="57600">57600</option>
+                    <option value="115200">115200</option>
+                </select>
+            </div>
+            
+            <div id="wifi-settings" style="display:none;">
+                <input type="text" id="ip-address" value="ws://192.168.4.1:8080" style="width: 140px;">
+            </div>
+            
+            <button id="btn-connect" onclick="toggleConnection()">Connect</button>
+            <div style="border-left: 1px solid #555; height: 16px; margin: 0 4px;"></div>
+            
+            <span>Cam:</span>
+            <button id="btn-cam" onclick="toggleCamera()">Cam On</button>
+            <div style="border-left: 1px solid #555; height: 16px; margin: 0 4px;"></div>
+            
+            <input type="text" id="tx-entry" placeholder="Data to send..." style="width: 120px;" onkeypress="handleTxKeyPress(event)">
+        </div>
+    </nav>
+
+    <!-- Main Workspace -->
+    <div class="workspace">
+        
+        <!-- Left Pane (Monitor + Keyboard) -->
+        <div class="left-pane" id="left-pane">
+            
+            <!-- Monitor Panel -->
+            <div class="monitor-panel" id="monitor-area">
+                <div class="canvas-container" id="canvas-container">
+                    <video id="video-element" autoplay playsinline muted></video>
+                    <canvas id="video-canvas"></canvas>
+                    <canvas id="grid-canvas"></canvas>
+                </div>
+                <div id="status-overlay" style="position: absolute; top: 10px; left: 10px; background: rgba(0,255,0,0.8); color: black; font-weight: bold; padding: 4px 8px; border-radius: 4px; display: none; z-index: 10;">RUNNING</div>
+            </div>
+            
+            <!-- Resizer Splitter (Horizontal - 상하 조절) -->
+            <div class="resizer-h" id="resizer-h"></div>
+
+            <!-- Virtual Keyboard -->
+            <div class="keyboard-panel" id="keyboard-panel">
+                <!-- Left Panel -->
+                <div class="kb-left" id="kb-left">
+                    <div class="kb-indicator-row">
+                        <div class="ind-bar" id="ind-zdrive"></div>
+                    </div>
+                    <div class="k-btn col-span-2" data-key="Z\nDRIVE">Z DRIVE</div>
+                    <div class="k-btn col-span-2" data-key="UP">UP</div>
+                    <div class="k-btn col-span-2" data-key="DOWN">DOWN</div>
+                    <div class="k-btn" data-key="↺">↺</div>
+                    <div class="k-btn" data-key="↻">↻</div>
+                    <div class="k-btn col-span-2" data-key="MARKER">MARKER</div>
+                    <div class="k-btn col-span-2" data-key="MULTI">MULTI</div>
+                </div>
+                
+                <!-- Center Panel -->
+                <div class="kb-center" id="kb-center">
+                    <div class="k-btn col-span-2 bg-start" data-key="START">START</div>
+                    <div class="k-btn col-span-2 bg-data" data-key="DATA\nIN">DATA IN</div>
+                    <div class="k-btn col-span-4" style="background:#3a3a3a; font-size:9.6px;" data-key="STATUS">STATUS</div>
+                    <div class="k-btn col-span-2 bg-stop" data-key="STOP">STOP</div>
+                    
+                    <div class="k-btn key-std" data-key="1">1</div><div class="k-btn key-std" data-key="2">2</div><div class="k-btn key-std" data-key="3">3</div><div class="k-btn key-std" data-key="4">4</div><div class="k-btn key-std" data-key="5">5</div><div class="k-btn key-std" data-key="6">6</div><div class="k-btn key-std" data-key="7">7</div><div class="k-btn key-std" data-key="8">8</div><div class="k-btn key-std" data-key="9">9</div><div class="k-btn key-std" data-key="0">0</div>
+                    <div class="k-btn key-std" data-key="Q">Q</div><div class="k-btn key-std" data-key="W">W</div><div class="k-btn key-std" data-key="E">E</div><div class="k-btn key-std" data-key="R">R</div><div class="k-btn key-std" data-key="T">T</div><div class="k-btn key-std" data-key="Y">Y</div><div class="k-btn key-std" data-key="U">U</div><div class="k-btn key-std" data-key="I">I</div><div class="k-btn key-std" data-key="O">O</div><div class="k-btn key-std" data-key="P">P</div>
+                    <div class="k-btn key-std" data-key="A">A</div><div class="k-btn key-std" data-key="S">S</div><div class="k-btn key-std" data-key="D">D</div><div class="k-btn key-std" data-key="F">F</div><div class="k-btn key-std" data-key="G">G</div><div class="k-btn key-std" data-key="H">H</div><div class="k-btn key-std" data-key="J">J</div><div class="k-btn key-std" data-key="K">K</div><div class="k-btn key-std" data-key="L">L</div><div class="k-btn key-std" data-key="< >">&lt; &gt;</div>
+                    <div class="k-btn bg-shift row-span-2" data-key="SHIFT">SHIFT</div>
+                    <div class="k-btn key-std" data-key="Z">Z</div><div class="k-btn key-std" data-key="X">X</div><div class="k-btn key-std" data-key="C">C</div><div class="k-btn key-std" data-key="V">V</div><div class="k-btn key-std" data-key="B">B</div><div class="k-btn key-std" data-key="N">N</div><div class="k-btn key-std" data-key="M">M</div><div class="k-btn key-std" data-key="DEL">DEL</div><div class="k-btn key-std" data-key="BS">BS</div>
+                    <div class="k-btn key-std col-span-3" data-key="SPACE">SPACE</div>
+                    <div class="k-btn key-std" data-key=",">,</div><div class="k-btn key-std" data-key=".">.</div><div class="k-btn key-std" data-key=":">:</div><div class="k-btn key-std" data-key="-">-</div>
+                    <div class="k-btn bg-ent col-span-2" data-key="ENT">ENT</div>
+                </div>
+                
+                <!-- Right Panel -->
+                <div class="kb-right" id="kb-right">
+                    <div class="kb-indicator-row">
+                        <div class="ind-bar active" id="ind-scan"></div>
+                        <div class="ind-bar" id="ind-jog"></div>
+                        <div class="ind-bar" id="ind-index"></div>
+                    </div>
+                    <div class="k-btn" data-key="SCAN">SCAN</div>
+                    <div class="k-btn" data-key="JOG">JOG</div>
+                    <div class="k-btn" data-key="INDEX">INDEX</div>
+                    
+                    <div class="k-btn" style="font-size:10.8px;" data-key="◤">◤</div>
+                    <div class="k-btn" style="font-size:10.8px;" data-key="▲">▲</div>
+                    <div class="k-btn" style="font-size:10.8px;" data-key="◥">◥</div>
+                    
+                    <div class="k-btn" style="font-size:13.2px;" data-key="◀">◀</div>
+                    <div class="k-btn" id="btn-multi2" data-key="MULTI2">MULTI</div>
+                    <div class="k-btn" style="font-size:13.2px;" data-key="▶">▶</div>
+                    
+                    <div class="k-btn" style="font-size:10.8px;" data-key="◣">◣</div>
+                    <div class="k-btn" style="font-size:10.8px;" data-key="▼">▼</div>
+                    <div class="k-btn" style="font-size:10.8px;" data-key="◢">◢</div>
+                    
+                    <div class="k-btn col-span-3" data-key="ALARM OFF">ALARM OFF</div>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- Resizer Splitter (Vertical - 좌우 조절) -->
+        <div class="resizer" id="resizer"></div>
+        
+        <!-- Log Panel -->
+        <div class="log-panel" id="log-panel">
+            <div class="log-header">
+                <span id="log-status">Ready.</span>
+                <div class="log-controls">
+                    <div class="macro-controls" id="macro-ui">
+                        <button id="btn-rec" onclick="toggleMacroRecord()">⏺ Rec</button>
+                        <button id="btn-play" onclick="toggleMacroPlay()">▶ Play</button>
+                        <button id="btn-timer" onclick="alert('Timer Macro Feature')">⏱ Timer</button>
+                    </div>
+                    <label><input type="checkbox" id="chk-tx" checked> TX</label>
+                    <label><input type="checkbox" id="chk-rx" checked> RX</label>
+                </div>
+            </div>
+            <div class="log-content" id="log-text"></div>
+        </div>
+        
+    </div>
+
+    <!-- Modals -->
+    <!-- Theme Modal -->
+    <div class="modal-overlay" id="themeModal">
+        <div class="modal">
+            <span class="modal-close" onclick="toggleModal('themeModal')">&times;</span>
+            <h2>Keyboard Theme Setting</h2>
+            <select id="theme-select" onchange="changeTheme()" style="width: 100%; padding: 8px; margin-bottom: 20px;">
+                <option value="original">Original</option>
+                <option value="dark">Dark</option>
+                <option value="neon">Neon</option>
+            </select>
+            <button onclick="toggleModal('themeModal')" style="width:100%; padding:10px;">Apply & Close</button>
+        </div>
+    </div>
+    
+    <!-- Mapping Debugger Modal -->
+    <div class="modal-overlay" id="mappingModal">
+        <div class="modal" style="width: 800px; max-width: 95%;">
+            <span class="modal-close" onclick="toggleModal('mappingModal')">&times;</span>
+            <h2>Mapping Debugger</h2>
+            <p style="margin-bottom: 10px; font-size: 13px; color: #aaa;">Mapping keys are embedded into the system. This is a read-only viewer for the simulated logic.</p>
+            <div style="background: #111; padding: 10px; height: 300px; overflow-y: scroll; font-family: monospace; font-size: 12px; color: #0f0;">
+                <pre id="mapping-json-view"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 소스 보호 스크립트 (개발자 도구 및 복사 방지)
+        document.addEventListener('selectstart', e => {
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') e.preventDefault();
+        });
+        document.addEventListener('keydown', e => {
+            // F12 방지
+            if (e.keyCode === 123) { e.preventDefault(); return false; }
+            // Ctrl+Shift+I, J, C (개발자 도구, 요소 검사 등)
+            if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67)) { e.preventDefault(); return false; }
+            // Ctrl+U (소스 보기), Ctrl+S (저장)
+            if (e.ctrlKey && (e.keyCode === 85 || e.keyCode === 83)) { e.preventDefault(); return false; }
+            // Ctrl+C (복사) - Input 박스에서는 허용
+            if (e.ctrlKey && e.keyCode === 67 && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); return false; }
+        });
+
+        // Mappings Data
+        const UF_MAPPINGS = {"X1_Y1_alias": "X1_Y1", "X1_Y2_alias": "X1_Y2", "X1_Y3_alias": "X1_Y3", "X1_Y4_alias": "X1_Y4", "X1_Y5_alias": "X1_Y5", "X1_Y6_alias": "X1_Y6", "X1_Y7_alias": "X1_Y7", "X1_Y8_alias": "X1_Y8", "X2_Y1_alias": "X2_Y1", "X2_Y2_alias": "X2_Y2", "X2_Y3_alias": "X2_Y3", "X2_Y4_alias": "X2_Y4", "X2_Y5_alias": "X2_Y5", "X2_Y6_alias": "X2_Y6", "X2_Y7_alias": "X2_Y7", "X2_Y8_alias": "X2_Y8", "X3_Y1_alias": "X3_Y1", "X3_Y2_alias": "X3_Y2", "X3_Y3_alias": "X3_Y3", "X3_Y4_alias": "X3_Y4", "X3_Y5_alias": "X3_Y5", "X3_Y6_alias": "X3_Y6", "X3_Y7_alias": "X3_Y7", "X3_Y8_alias": "X3_Y8", "X4_Y1_alias": "X4_Y1", "X4_Y2_alias": "X4_Y2", "X4_Y3_alias": "X4_Y3", "X4_Y4_alias": "X4_Y4", "X4_Y5_alias": "X4_Y5", "X4_Y6_alias": "X4_Y6", "X4_Y7_alias": "X4_Y7", "X4_Y8_alias": "X4_Y8", "X5_Y1_alias": "X5_Y1", "X5_Y2_alias": "X5_Y2", "X5_Y3_alias": "X5_Y3", "X5_Y4_alias": "X5_Y4", "X5_Y5_alias": "X5_Y5", "X5_Y6_alias": "X5_Y6", "X5_Y7_alias": "X5_Y7", "X5_Y8_alias": "X5_Y8", "X6_Y1_alias": "X6_Y1", "X6_Y2_alias": "X6_Y2", "X6_Y3_alias": "X6_Y3", "X6_Y4_alias": "X6_Y4", "X6_Y5_alias": "X6_Y5", "X6_Y6_alias": "X6_Y6", "X6_Y7_alias": "X6_Y7", "X6_Y8_alias": "X6_Y8", "X7_Y1_alias": "X7_Y1", "X7_Y2_alias": "X7_Y2", "X7_Y3_alias": "X7_Y3", "X7_Y4_alias": "X7_Y4", "X7_Y5_alias": "X7_Y5", "X7_Y6_alias": "X7_Y6", "X7_Y7_alias": "X7_Y7", "X7_Y8_alias": "X7_Y8", "X8_Y1_alias": "X8_Y1", "X8_Y2_alias": "X8_Y2", "X8_Y3_alias": "X8_Y3", "X8_Y4_alias": "X8_Y4", "X8_Y5_alias": "X8_Y5", "X8_Y6_alias": "X8_Y6", "X8_Y7_alias": "X8_Y7", "X8_Y8_alias": "X8_Y8", "X8_Y8_pins": "1,9", "Z\nDRIVE_alias": "Z_DRIVE", "Z\nDRIVE_cable": "J1", "UP_alias": "UP", "UP_cable": "J1", "DOWN_alias": "DOWN", "DOWN_cable": "J1", "↺_alias": "↺", "↺_cable": "J1", "↻_alias": "↻", "↻_cable": "J1", "MARKER_alias": "MARKER", "MARKER_cable": "J1", "MULTI_alias": "MULTI", "MULTI_cable": "J1", "START_alias": "START", "START_cable": "J1", "DATA\nIN_alias": "DATA_IN", "DATA\nIN_cable": "J1", "STOP_alias": "STOP", "STOP_cable": "J1", "1_alias": "1", "1_cable": "J2", "2_alias": "2", "2_cable": "J2", "3_alias": "3", "3_cable": "J2", "4_alias": "4", "4_cable": "J2", "5_alias": "5", "5_cable": "J2", "6_alias": "6", "6_cable": "J2", "7_alias": "7", "7_cable": "J2", "8_alias": "8", "8_cable": "J2", "9_alias": "9", "9_cable": "J2", "0_alias": "0", "0_cable": "J2", "Q_alias": "Q", "Q_cable": "J2", "Q_lower_alias": "Q (low)", "Q_lower_cable": "J2", "W_alias": "W", "W_cable": "J2", "W_lower_alias": "W (low)", "W_lower_cable": "J2", "E_alias": "E", "E_cable": "J2", "E_lower_alias": "E (low)", "E_lower_cable": "J2", "R_alias": "R", "R_cable": "J2", "R_lower_alias": "R (low)", "R_lower_cable": "J2", "T_alias": "T", "T_cable": "J2", "T_lower_alias": "T (low)", "T_lower_cable": "J2", "Y_alias": "Y", "Y_cable": "J2", "Y_lower_alias": "Y (low)", "Y_lower_cable": "J2", "U_alias": "U", "U_cable": "J2", "U_lower_alias": "U (low)", "U_lower_cable": "J2", "I_alias": "I", "I_cable": "J2", "I_lower_alias": "I (low)", "I_lower_cable": "J2", "O_alias": "O", "O_cable": "J2", "O_lower_alias": "O (low)", "O_lower_cable": "J2", "P_alias": "P", "P_cable": "J2", "P_lower_alias": "P (low)", "P_lower_cable": "J2", "A_alias": "A", "A_cable": "J2", "A_lower_alias": "A (low)", "A_lower_cable": "J2", "S_alias": "S", "S_cable": "J2", "S_lower_alias": "S (low)", "S_lower_cable": "J2", "D_alias": "D", "D_cable": "J2", "D_lower_alias": "D (low)", "D_lower_cable": "J2", "F_alias": "F", "F_cable": "J2", "F_lower_alias": "F (low)", "F_lower_cable": "J2", "G_alias": "G", "G_cable": "J2", "G_lower_alias": "G (low)", "G_lower_cable": "J2", "H_alias": "H", "H_cable": "J2", "H_lower_alias": "H (low)", "H_lower_cable": "J2", "J_alias": "J", "J_cable": "J2", "J_lower_alias": "J (low)", "J_lower_cable": "J2", "K_alias": "K", "K_cable": "J2", "K_lower_alias": "K (low)", "K_lower_cable": "J2", "L_alias": "L", "L_cable": "J2", "L_lower_alias": "L (low)", "L_lower_cable": "J2", "< >_alias": "< >", "< >_cable": "J2", "SHIFT_alias": "SHIFT", "SHIFT_cable": "J2", "Z_alias": "Z", "Z_cable": "J2", "Z_lower_alias": "Z (low)", "Z_lower_cable": "J2", "X_alias": "X", "X_cable": "J2", "X_lower_alias": "X (low)", "X_lower_cable": "J2", "C_alias": "C", "C_cable": "J2", "C_lower_alias": "C (low)", "C_lower_cable": "J2", "V_alias": "V", "V_cable": "J2", "V_lower_alias": "V (low)", "V_lower_cable": "J2", "B_alias": "B", "B_cable": "J2", "B_lower_alias": "B (low)", "B_lower_cable": "J2", "N_alias": "N", "N_cable": "J2", "N_lower_alias": "N (low)", "N_lower_cable": "J2", "M_alias": "M", "M_cable": "J2", "M_lower_alias": "M (low)", "M_lower_cable": "J2", "DEL_alias": "DEL", "DEL_cable": "J2", "BS_alias": "BS", "BS_cable": "J2", "SPACE_alias": "SPACE", "SPACE_cable": "J2", "?_alias": "?", "?_cable": "J2", "*_alias": "*", "*_cable": "J2", "=_alias": "=", "=_cable": "J2", "+_alias": "+", "+_cable": "J2", "ENT_alias": "ENT", "ENT_cable": "J2", "SCAN_alias": "SCAN", "SCAN_cable": "J1", "JOG_alias": "JOG", "JOG_cable": "J1", "INDEX_alias": "INDEX", "INDEX_cable": "J1", "↖_alias": "↖", "↖_cable": "J1", "↑_alias": "↑", "↑_cable": "J1", "↗_alias": "↗", "↗_cable": "J1", "←_alias": "←", "←_cable": "J1", "→_alias": "→", "→_cable": "J1", "↙_alias": "↙", "↙_cable": "J1", "↓_alias": "↓", "↓_cable": "J1", "↘_alias": "↘", "↘_cable": "J1", "ALARM OFF_alias": "ALARM OFF", "ALARM OFF_cable": "J1", "X1_Y1_pins": "8,16", "X1_Y2_pins": "7,16", "X1_Y3_pins": "6,16", "X1_Y4_pins": "5,16", "X1_Y5_pins": "4,16", "X1_Y6_pins": "3,16", "X1_Y7_pins": "2,16", "X1_Y8_pins": "1,16", "X2_Y1_pins": "8,15", "X2_Y2_pins": "7,15", "X2_Y3_pins": "6,15", "X2_Y4_pins": "5,15", "X2_Y5_pins": "4,15", "X2_Y6_pins": "3,15", "X2_Y7_pins": "2,15", "X2_Y8_pins": "1,15", "X3_Y1_pins": "8,14", "X3_Y2_pins": "7,14", "X3_Y3_pins": "6,14", "X3_Y4_pins": "5,14", "X3_Y5_pins": "4,14", "X3_Y6_pins": "3,14", "X3_Y7_pins": "2,14", "X3_Y8_pins": "1,14", "X4_Y1_pins": "8,13", "X4_Y2_pins": "7,13", "X4_Y3_pins": "6,13", "X4_Y4_pins": "5,13", "X4_Y5_pins": "4,13", "X4_Y6_pins": "3,13", "X4_Y7_pins": "2,13", "X4_Y8_pins": "1,13", "X5_Y1_pins": "8,12", "X5_Y2_pins": "7,12", "X5_Y3_pins": "6,12", "X5_Y4_pins": "5,12", "X5_Y5_pins": "4,12", "X5_Y6_pins": "3,12", "X5_Y7_pins": "2,12", "X5_Y8_pins": "1,12", "X6_Y1_pins": "8,11", "X6_Y2_pins": "7,11", "X6_Y3_pins": "6,11", "X6_Y4_pins": "5,11", "X6_Y5_pins": "4,11", "X6_Y6_pins": "3,11", "X6_Y7_pins": "2,11", "X6_Y8_pins": "1,11", "X7_Y1_pins": "8,10", "X7_Y2_pins": "7,10", "X7_Y3_pins": "6,10", "X7_Y4_pins": "5,10", "X7_Y5_pins": "4,10", "X7_Y6_pins": "3,10", "X7_Y7_pins": "2,10", "X7_Y8_pins": "1,10", "X8_Y1_pins": "8,9", "X8_Y2_pins": "7,9", "X8_Y3_pins": "6,9", "X8_Y4_pins": "5,9", "X8_Y5_pins": "4,9", "X8_Y6_pins": "3,9", "X8_Y7_pins": "2,9", "MULTI2_alias": "MULTI2", "MULTI2_cable": "J1", "Z\nDRIVE_pins": "X2_Y2", "START_pins": "X1_Y2", "STOP_pins": "X3_Y2", "UP_pins": "X4_Y2", "DOWN_pins": "X5_Y2", "MULTI_pins": "X9_Y2", "DATA\nIN_pins": "X6_Y2", "SCAN_pins": "X10_Y2", "JOG_pins": "X11_Y2", "INDEX_pins": "X12_Y2", "↖_pins": "X15_Y1", "↑_pins": "X13_Y2", "↗_pins": "X16_Y1", "←_pins": "X7_Y2", "→_pins": "X8_Y2", "↓_pins": "X14_Y2", "8_pins": "X2_Y3", "9_pins": "X2_Y2", "0_pins": "X2_Y1", "SHIFT_pins": "X1_8Y", "3_pins": "X2_Y8", "4_pins": "X2_Y7", "5_pins": "X2_Y6", "6_pins": "X2_Y5", "7_pins": "X2_Y4", "Q_pins": "X3_Y1", "Q_lower_pins": "X3_Y1", "W_pins": "X3_Y2", "W_lower_pins": "X3_Y2", "1_pins": "X3_Y8", "2_pins": "X3_Y7", "E_pins": "X4_Y1", "E_lower_pins": "X4_Y1", "R_pins": "X4_Y2", "R_lower_pins": "X4_Y2", "A_pins": "X3_Y3", "A_lower_pins": "X3_Y3", "S_pins": "X3_Y4", "S_lower_pins": "X3_Y4", "Z_pins": "X3_Y6", "Z_lower_pins": "X3_Y6", "T_pins": "X5_Y1", "T_lower_pins": "X5_Y1", "Y_pins": "X5_Y2", "Y_lower_pins": "X5_Y2", "U_pins": "X6_Y1", "U_lower_pins": "X6_Y1", "I_pins": "X6_Y2", "I_lower_pins": "X6_Y2", "D_pins": "X4_Y3", "D_lower_pins": "X4_Y3", "F_pins": "X4_Y4", "F_lower_pins": "X4_Y4", "G_pins": "X5_Y3", "G_lower_pins": "X5_Y3", "H_pins": "X5_Y4", "H_lower_pins": "X5_Y4", "J_pins": "X6_Y3", "J_lower_pins": "X6_Y3", "X_pins": "X4_Y5", "X_lower_pins": "X4_Y5", "C_pins": "X4_Y6", "C_lower_pins": "X4_Y6", "V_pins": "X5_Y5", "V_lower_pins": "X5_Y5", "B_pins": "X5_Y6", "B_lower_pins": "X5_Y6", "SPACE_pins": "X4_Y8", "?_pins": "X5_Y7", "*_pins": "X5_Y8", "O_pins": "X7_Y1", "O_lower_pins": "X7_Y1", "P_pins": "X7_Y2", "P_lower_pins": "X7_Y2", "K_pins": "X6_Y4", "K_lower_pins": "X6_Y4", "L_pins": "X7_Y3", "L_lower_pins": "X7_Y3", "< >_pins": "X7_Y4", "N_pins": "X6_Y5", "N_lower_pins": "X6_Y5", "M_pins": "X6_Y6", "M_lower_pins": "X6_Y6", "DEL_pins": "X7_Y5", "BS_pins": "X7_Y6", "=_pins": "X6_Y7", "+_pins": "X6_Y8", "ENT_pins": "X7_Y8", "MULTI2_pins": "X9_Y2", "ALARM OFF_pins": "X9_Y2", ",_alias": ",", ",_cable": "J2", ",_pins": "X5_Y7", "._alias": ".", "._cable": "J2", "._pins": "X5_Y8", ":_alias": ":", ":_cable": "J2", ":_pins": "X6_Y7", "-_alias": "-", "-_cable": "J2", "-_pins": "X6_Y8", "MANUAL_1_alias": "M_1", "MANUAL_1_cable": "J0", "MANUAL_2_alias": "▲", "MANUAL_2_cable": "J1", "MANUAL_2_pins": "X13_Y2", "MANUAL_9_alias": "◀", "MANUAL_9_cable": "J1", "MANUAL_9_pins": "X7_Y2", "MANUAL_10_alias": "MULTI", "MANUAL_10_cable": "J1", "MANUAL_10_pins": "X9_Y2", "MANUAL_11_alias": "▶", "MANUAL_11_cable": "J1", "MANUAL_11_pins": "X8_Y2", "MANUAL_18_alias": "▼", "MANUAL_18_cable": "J1", "MANUAL_18_pins": "X14_Y2", "MANUAL_25_alias": "SCAN", "MANUAL_25_cable": "J1", "MANUAL_25_pins": "X10_Y2", "MANUAL_26_alias": "JOG", "MANUAL_26_cable": "J1", "MANUAL_26_pins": "X11_Y2", "MANUAL_27_alias": "INDEX", "MANUAL_27_cable": "J1", "MANUAL_27_pins": "X12_Y2", "▲_alias": "▲", "▲_cable": "J1", "▲_pins": "X13_Y2", "◀_alias": "◀", "◀_cable": "J1", "◀_pins": "X7_Y2", "▶_alias": "▶", "▶_cable": "J1", "▶_pins": "X8_Y2", "▼_alias": "▼", "▼_cable": "J1", "▼_pins": "X14_Y2", "◤_alias": "◤", "◤_cable": "J1", "◤_pins": "X15_Y1", "◥_alias": "◥", "◥_cable": "J1", "◥_pins": "X16_Y1", "◣_alias": "◣", "◣_cable": "J1", "◣_pins": "X15_Y1", "◢_alias": "◢", "◢_cable": "J1", "◢_pins": "X16_Y1"};
+
+        // Global State
+        let isConnected = false;
+        let serialPort = null;
+        let serialWriter = null;
+        let serialReader = null;
+        let webSocket = null;
+        
+        let isCameraOn = false;
+        let videoStream = null;
+        let isShiftOn = false;
+        let isMulti2On = false;
+        let isZDriveOn = false;
+        
+        let isMacroRecording = false;
+        let isMacroPlaying = false;
+        let macroEvents = [];
+        let macroStartTime = 0;
+        let playTimeouts = [];
+        let pcSync = true;
+        
+        // Touch Grid State
+        let gridVisible = true;
+        let isGridAdjustable = false;
+        let draggingLine = null;
+        let activeTouchKey = null;
+        let isDragging = false;
+        
+        // Splitter & UI State
+        let isResizingSplitter = false;
+        let isResizingSplitterH = false;
+        let logVisible = true; 
+        
+        // Grid Ratios (8x8)
+        let gridXRatios = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
+        let gridYRatios = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
+        
+        // 페이지 로드 시 인증 세션 확인
+        document.addEventListener('DOMContentLoaded', () => {
+            if(sessionStorage.getItem('uf_auth') === 'true') {
+                document.getElementById('auth-overlay').style.display = 'none';
+            }
+            
+            window.addEventListener('resize', () => resizeCanvas());
+            
+            // Touch Grid Listeners
+            const canvasContainer = document.getElementById('canvas-container');
+            canvasContainer.addEventListener('mousedown', handleGridPress);
+            canvasContainer.addEventListener('touchstart', handleGridPress);
+            canvasContainer.addEventListener('mousemove', handleGridMove);
+            canvasContainer.addEventListener('touchmove', handleGridMove);
+            canvasContainer.addEventListener('mouseup', handleGridRelease);
+            canvasContainer.addEventListener('touchend', handleGridRelease);
+            canvasContainer.addEventListener('mouseleave', handleGridRelease);
+            
+            // Vertical Splitter Listeners
+            const resizer = document.getElementById('resizer');
+            const leftPane = document.getElementById('left-pane');
+            const workspace = document.querySelector('.workspace');
+
+            resizer.addEventListener('mousedown', (e) => {
+                isResizingSplitter = true;
+                resizer.classList.add('active');
+                document.body.style.cursor = 'col-resize';
+                e.preventDefault();
+            });
+
+            // Horizontal Splitter Listeners
+            const resizerH = document.getElementById('resizer-h');
+            const monitorArea = document.getElementById('monitor-area');
+
+            resizerH.addEventListener('mousedown', (e) => {
+                isResizingSplitterH = true;
+                resizerH.classList.add('active');
+                document.body.style.cursor = 'row-resize';
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isResizingSplitter) {
+                    const wsRect = workspace.getBoundingClientRect();
+                    let newWidth = ((e.clientX - wsRect.left) / wsRect.width) * 100;
+                    if (newWidth < 10) newWidth = 10;
+                    if (newWidth > 90) newWidth = 90;
+                    leftPane.style.width = newWidth + '%';
+                    resizeCanvas();
+                }
+                
+                if (isResizingSplitterH) {
+                    const lpRect = leftPane.getBoundingClientRect();
+                    let newHeight = ((e.clientY - lpRect.top) / lpRect.height) * 100;
+                    if (newHeight < 20) newHeight = 20;
+                    if (newHeight > 80) newHeight = 80;
+                    monitorArea.style.height = newHeight + '%';
+                    monitorArea.style.flex = 'none';
+                    resizeCanvas();
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizingSplitter) {
+                    isResizingSplitter = false;
+                    resizer.classList.remove('active');
+                    document.body.style.cursor = 'default';
+                    resizeCanvas();
+                }
+                if (isResizingSplitterH) {
+                    isResizingSplitterH = false;
+                    resizerH.classList.remove('active');
+                    document.body.style.cursor = 'default';
+                    resizeCanvas();
+                }
+            });
+
+            document.getElementById('mapping-json-view').textContent = JSON.stringify(UF_MAPPINGS, null, 2);
+            bindKeyboardButtons();
+            
+            document.addEventListener('keydown', handlePCKeyDown);
+            document.addEventListener('keyup', handlePCKeyUp);
+            
+            // Load saved settings
+            loadSettings();
+            drawGrid();
+        });
+
+        // ------------------------------------
+        // Password Auth Logic
+        // ------------------------------------
+        function checkAuth() {
+            const allowed = ['140835', '140836', '140848', '140881', '140880', '140882'];
+            const input = document.getElementById('auth-pwd').value;
+            if(allowed.includes(input)) {
+                document.getElementById('auth-overlay').style.display = 'none';
+                sessionStorage.setItem('uf_auth', 'true');
+            } else {
+                document.getElementById('auth-err').style.display = 'block';
+                document.getElementById('auth-pwd').value = '';
+                document.getElementById('auth-pwd').focus();
+            }
+        }
+
+        // ------------------------------------
+        // Settings Save & Load logic
+        // ------------------------------------
+        function saveSettings() {
+            const settings = {
+                theme: document.getElementById('theme-select').value,
+                connMode: document.getElementById('conn-mode').value,
+                baudRate: document.getElementById('baud-rate').value,
+                ipAddress: document.getElementById('ip-address').value,
+                chkTx: document.getElementById('chk-tx').checked,
+                chkRx: document.getElementById('chk-rx').checked,
+                gridVisible: gridVisible,
+                isGridAdjustable: isGridAdjustable,
+                gridXRatios: gridXRatios,
+                gridYRatios: gridYRatios,
+                splitWidth: document.getElementById('left-pane').style.width || '75%',
+                splitHeight: document.getElementById('monitor-area').style.height || '',
+                macroVisible: document.getElementById('macro-ui').style.display !== 'none',
+                logVisible: logVisible,
+                pcSync: pcSync,
+                cameraAutoStart: isCameraOn
+            };
+            
+            try {
+                localStorage.setItem('uf200sa_settings', JSON.stringify(settings));
+                alert("Settings saved successfully.");
+                appendLog('SYS', 'Settings saved.');
+            } catch (e) {
+                alert("Failed to save settings.");
+            }
+        }
+
+        function loadSettings() {
+            const saved = localStorage.getItem('uf200sa_settings');
+            if (!saved) return;
+            
+            try {
+                const settings = JSON.parse(saved);
+                
+                if (settings.theme) {
+                    document.getElementById('theme-select').value = settings.theme;
+                    changeTheme();
+                }
+                if (settings.connMode) {
+                    document.getElementById('conn-mode').value = settings.connMode;
+                    updateConnMode();
+                }
+                if (settings.baudRate) document.getElementById('baud-rate').value = settings.baudRate;
+                if (settings.ipAddress) document.getElementById('ip-address').value = settings.ipAddress;
+                if (settings.chkTx !== undefined) document.getElementById('chk-tx').checked = settings.chkTx;
+                if (settings.chkRx !== undefined) document.getElementById('chk-rx').checked = settings.chkRx;
+                
+                if (settings.gridVisible !== undefined) gridVisible = settings.gridVisible;
+                if (settings.isGridAdjustable !== undefined) {
+                    isGridAdjustable = settings.isGridAdjustable;
+                    document.getElementById('menu-grid-adjust').textContent = 'Matrix Line Adjust: ' + (isGridAdjustable ? 'ON' : 'OFF');
+                }
+                if (settings.gridXRatios) gridXRatios = settings.gridXRatios;
+                if (settings.gridYRatios) gridYRatios = settings.gridYRatios;
+                
+                if (settings.logVisible !== undefined) {
+                    logVisible = settings.logVisible;
+                    document.getElementById('log-panel').style.display = logVisible ? 'flex' : 'none';
+                    document.getElementById('resizer').style.display = logVisible ? 'block' : 'none';
+                }
+                
+                if (settings.splitWidth) {
+                    if (logVisible) {
+                        document.getElementById('left-pane').style.width = settings.splitWidth;
+                    } else {
+                        document.getElementById('left-pane').style.width = '100%';
+                    }
+                }
+                if (settings.splitHeight) {
+                    const monitorArea = document.getElementById('monitor-area');
+                    monitorArea.style.height = settings.splitHeight;
+                    monitorArea.style.flex = 'none';
+                }
+                
+                if (settings.macroVisible !== undefined) {
+                    document.getElementById('macro-ui').style.display = settings.macroVisible ? 'flex' : 'none';
+                }
+                if (settings.pcSync !== undefined) pcSync = settings.pcSync;
+                
+                appendLog('SYS', 'Settings loaded.');
+                resizeCanvas();
+                
+                if (settings.cameraAutoStart) {
+                    toggleCamera();
+                }
+                
+            } catch(e) {
+                console.error('Error loading settings', e);
+            }
+        }
+        
+        function resetSettings() {
+            if (confirm("All settings will be reset to default. Continue?")) {
+                localStorage.removeItem('uf200sa_settings');
+                location.reload();
+            }
+        }
+
+        function toggleLogPanel() {
+            logVisible = !logVisible;
+            document.getElementById('log-panel').style.display = logVisible ? 'flex' : 'none';
+            document.getElementById('resizer').style.display = logVisible ? 'block' : 'none';
+            
+            if (!logVisible) {
+                document.getElementById('left-pane').style.width = '100%';
+            } else {
+                let savedSettings = localStorage.getItem('uf200sa_settings');
+                let width = '75%';
+                if(savedSettings) {
+                    let parsed = JSON.parse(savedSettings);
+                    if(parsed.splitWidth) width = parsed.splitWidth;
+                }
+                document.getElementById('left-pane').style.width = width;
+            }
+            resizeCanvas();
+        }
+
+        function resizeCanvas() {
+            const vCanvas = document.getElementById('video-canvas');
+            const cont = document.getElementById('canvas-container');
+            if (vCanvas && cont) {
+                vCanvas.width = cont.clientWidth;
+                vCanvas.height = cont.clientHeight;
+                drawGrid();
+            }
+        }
+
+        // Logging
+        function appendLog(type, msg) {
+            if (type === 'TX' && !document.getElementById('chk-tx').checked) return;
+            if (type === 'RX' && !document.getElementById('chk-rx').checked) return;
+
+            const now = new Date();
+            const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
+                            now.getMinutes().toString().padStart(2, '0') + ':' + 
+                            now.getSeconds().toString().padStart(2, '0');
+            
+            const txtArea = document.getElementById('log-text');
+            const statusLabel = document.getElementById('log-status');
+            
+            const line = document.createElement('div');
+            line.className = 'log-' + type.toLowerCase();
+            line.textContent = `[${timeStr}] ${type}: ${msg}`;
+            txtArea.appendChild(line);
+            statusLabel.textContent = `[${timeStr}] ${type}: ${msg}`;
+            
+            if (txtArea.childElementCount > 200) { txtArea.removeChild(txtArea.firstChild); }
+            txtArea.scrollTop = txtArea.scrollHeight;
+        }
+        function clearLog() { document.getElementById('log-text').innerHTML = ''; document.getElementById('log-status').textContent = 'Ready.'; }
+        function downloadLog() {
+            const text = document.getElementById('log-text').innerText;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'rs232_log.txt'; a.click(); URL.revokeObjectURL(url);
+        }
+
+        function updateConnMode() {
+            const mode = document.getElementById('conn-mode').value;
+            document.getElementById('com-settings').style.display = mode === 'COM' ? 'block' : 'none';
+            document.getElementById('wifi-settings').style.display = mode === 'WIFI' ? 'block' : 'none';
+        }
+        
+        async function toggleConnection() {
+            const btn = document.getElementById('btn-connect');
+            const ind = document.getElementById('ind-conn');
+            const mode = document.getElementById('conn-mode').value;
+            
+            if (isConnected) {
+                if (mode === 'COM' && serialPort) {
+                    try { await serialPort.close(); } catch(e) {}
+                } else if (mode === 'WIFI' && webSocket) {
+                    webSocket.close();
+                }
+                isConnected = false;
+                btn.textContent = 'Connect'; btn.classList.remove('btn-danger');
+                ind.classList.remove('active');
+                appendLog('SYS', 'Disconnected');
+                return;
+            }
+            
+            try {
+                if (mode === 'COM') {
+                    if ('serial' in navigator) {
+                        let ports = await navigator.serial.getPorts();
+                        if (ports.length > 0) {
+                            serialPort = ports[0];
+                        } else {
+                            serialPort = await navigator.serial.requestPort();
+                        }
+                        const baud = parseInt(document.getElementById('baud-rate').value);
+                        await serialPort.open({ baudRate: baud });
+                        serialWriter = serialPort.writable.getWriter();
+                        serialReader = serialPort.readable.getReader();
+                        readSerialLoop();
+                    } else {
+                        alert('Web Serial API is not supported in this browser. Use Chrome/Edge or select WIFI.');
+                        return;
+                    }
+                } else {
+                    const url = document.getElementById('ip-address').value;
+                    webSocket = new WebSocket(url);
+                    webSocket.onmessage = (e) => appendLog('RX', e.data);
+                    webSocket.onerror = (e) => appendLog('ERR', 'WebSocket Error');
+                    webSocket.onclose = () => { if(isConnected) toggleConnection(); };
+                }
+                
+                isConnected = true;
+                btn.textContent = 'Disconnect'; btn.classList.add('btn-danger');
+                ind.classList.add('active');
+                appendLog('SYS', 'Connected via ' + mode);
+                
+                setTimeout(() => {
+                    sendData('[GET_Z_STATE]');
+                    
+                    const indexBtn = document.querySelector('.k-btn[data-key="INDEX"]');
+                    if (indexBtn) {
+                        onButtonPress('INDEX', indexBtn);
+                        setTimeout(() => onButtonRelease('INDEX', indexBtn), 150);
+                    }
+                }, 1000);
+            } catch (err) {
+                appendLog('ERR', 'Connection failed: ' + err.message);
+            }
+        }
+
+        async function readSerialLoop() {
+            try {
+                while (serialPort && serialPort.readable) {
+                    const { value, done } = await serialReader.read();
+                    if (done) break;
+                    const txt = new TextDecoder().decode(value);
+                    appendLog('RX', txt);
+                }
+            } catch (e) {}
+        }
+
+        async function sendData(data) {
+            const str = data + "\n";
+            appendLog('TX', data);
+            
+            if (document.getElementById('conn-mode').value === 'COM' && serialWriter) {
+                await serialWriter.write(new TextEncoder().encode(str));
+            } else if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                webSocket.send(str);
+            }
+        }
+
+        function handleTxKeyPress(e) {
+            if (e.key === 'Enter') {
+                const input = document.getElementById('tx-entry');
+                if(input.value) { sendData(input.value); input.value = ''; }
+            }
+        }
+
+        // Camera / OpenCV Handling
+        async function toggleCamera() {
+            const btn = document.getElementById('btn-cam');
+            const video = document.getElementById('video-element');
+            const vCanvas = document.getElementById('video-canvas');
+            const ctx = vCanvas.getContext('2d');
+            
+            if (isCameraOn) {
+                if (videoStream) videoStream.getTracks().forEach(t => t.stop());
+                video.pause(); video.srcObject = null;
+                ctx.clearRect(0,0,vCanvas.width,vCanvas.height);
+                btn.textContent = 'Cam On'; btn.classList.remove('btn-danger');
+                isCameraOn = false;
+                appendLog('SYS', 'Camera OFF');
+            } else {
+                try {
+                    videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = videoStream;
+                    video.play();
+                    btn.textContent = 'Cam Off'; btn.classList.add('btn-danger');
+                    isCameraOn = true;
+                    appendLog('SYS', 'Camera ON');
+                    requestAnimationFrame(renderVideo);
+                } catch (e) {
+                    appendLog('ERR', 'Camera access failed: ' + e.message);
+                }
+            }
+        }
+
+        function renderVideo() {
+            if (!isCameraOn) return;
+            const video = document.getElementById('video-element');
+            const vCanvas = document.getElementById('video-canvas');
+            
+            if (video.readyState >= 2) {
+                const cont = document.getElementById('canvas-container');
+                if (vCanvas.width !== cont.clientWidth || vCanvas.height !== cont.clientHeight) {
+                    vCanvas.width = cont.clientWidth;
+                    vCanvas.height = cont.clientHeight;
+                }
+                const ctx = vCanvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, vCanvas.width, vCanvas.height);
+            }
+            requestAnimationFrame(renderVideo);
+        }
+
+        // =======================
+        // Grid Touch & Adjust System
+        // =======================
+        function drawGrid() {
+            const canvas = document.getElementById('grid-canvas');
+            const cont = document.getElementById('canvas-container');
+            if(canvas.width !== cont.clientWidth || canvas.height !== cont.clientHeight) {
+                canvas.width = cont.clientWidth; 
+                canvas.height = cont.clientHeight;
+            }
+            
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (!gridVisible) return;
+            
+            // 내부 그리드(점선)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)'; // 투명도 25% 적용
+            ctx.setLineDash([4, 4]);
+            ctx.lineWidth = 1;
+            
+            gridXRatios.forEach(r => {
+                let x = canvas.width * r;
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            });
+            gridYRatios.forEach(r => {
+                let y = canvas.height * r;
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            });
+            
+            if (activeTouchKey) {
+                const match = activeTouchKey.match(/X(\d+)_Y(\d+)/);
+                if (match) {
+                    const row = parseInt(match[1]) - 1;
+                    const col = parseInt(match[2]) - 1;
+                    
+                    const cX = col === 0 ? 0 : canvas.width * gridXRatios[col-1];
+                    const cY = row === 0 ? 0 : canvas.height * gridYRatios[row-1];
+                    const cW = (col === 7 ? canvas.width : canvas.width * gridXRatios[col]) - cX;
+                    const cH = (row === 7 ? canvas.height : canvas.height * gridYRatios[row]) - cY;
+                    
+                    ctx.fillStyle = 'rgba(0, 255, 255, 0.4)';
+                    ctx.fillRect(cX, cY, cW, cH);
+                }
+            }
+        }
+        
+        function toggleGrid() { 
+            gridVisible = !gridVisible; 
+            drawGrid(); 
+        }
+        function toggleGridAdjust() { 
+            isGridAdjustable = !isGridAdjustable; 
+            document.getElementById('menu-grid-adjust').textContent = 'Matrix Line Adjust: ' + (isGridAdjustable ? 'ON' : 'OFF');
+        }
+
+        function handleGridPress(e) {
+            e.preventDefault();
+
+            // 터치 패널 클릭 시 MULTI2 버튼이 눌려있다면 해제 동작 수행 (요청 반영)
+            if (isMulti2On) {
+                const btnMulti2 = document.getElementById('btn-multi2');
+                if (btnMulti2) {
+                    btnMulti2.classList.remove('active-hold');
+                    isMulti2On = false;
+                    triggerMappingEvent('MULTI2', 0);
+                }
+            }
+
+            const rect = e.currentTarget.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            
+            draggingLine = null;
+            isDragging = false;
+
+            if (isGridAdjustable && gridVisible) {
+                const threshold = 15;
+                for(let i=0; i<gridXRatios.length; i++) {
+                    if (Math.abs(x - rect.width * gridXRatios[i]) < threshold) {
+                        draggingLine = { axis: 'x', index: i };
+                        isDragging = true;
+                        return;
+                    }
+                }
+                for(let i=0; i<gridYRatios.length; i++) {
+                    if (Math.abs(y - rect.height * gridYRatios[i]) < threshold) {
+                        draggingLine = { axis: 'y', index: i };
+                        isDragging = true;
+                        return;
+                    }
+                }
+            }
+            
+            processTouchPress(x, y, rect.width, rect.height);
+        }
+
+        function handleGridMove(e) {
+            if (!draggingLine) return;
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            
+            if (draggingLine.axis === 'x') {
+                gridXRatios[draggingLine.index] = Math.max(0.01, Math.min(0.99, x / rect.width));
+            } else {
+                gridYRatios[draggingLine.index] = Math.max(0.01, Math.min(0.99, y / rect.height));
+            }
+            drawGrid();
+        }
+
+        function handleGridRelease(e) {
+            if (draggingLine) { 
+                draggingLine = null; 
+                isDragging = false;
+                return; 
+            }
+            if (activeTouchKey) {
+                triggerMappingEvent(activeTouchKey, 0);
+                if(isMacroRecording) macroEvents.push({t: Date.now() - macroStartTime, type: 'TOUCH_RELEASE', key: activeTouchKey});
+                activeTouchKey = null;
+                drawGrid(); // Clear highlight
+            }
+        }
+        
+        function processTouchPress(x, y, w, h) {
+            let col = 7, row = 7;
+            for(let i=0; i<7; i++) { if(x < w * gridXRatios[i]) { col = i; break; } }
+            for(let i=0; i<7; i++) { if(y < h * gridYRatios[i]) { row = i; break; } }
+            
+            const keyName = `X${row+1}_Y${col+1}`;
+            activeTouchKey = keyName;
+            drawGrid(); // Render highlight
+            
+            triggerMappingEvent(keyName, 1);
+            if(isMacroRecording) macroEvents.push({t: Date.now() - macroStartTime, type: 'TOUCH_PRESS', key: keyName});
+        }
+
+        // =======================
+        // Keyboard & Mappings
+        // =======================
+        function bindKeyboardButtons() {
+            const btns = document.querySelectorAll('.k-btn');
+            btns.forEach(btn => {
+                btn.addEventListener('mousedown', (e) => onButtonPress(btn.dataset.key, btn));
+                btn.addEventListener('mouseup', (e) => onButtonRelease(btn.dataset.key, btn));
+                btn.addEventListener('mouseleave', (e) => onButtonRelease(btn.dataset.key, btn));
+                btn.addEventListener('touchstart', (e) => { e.preventDefault(); onButtonPress(btn.dataset.key, btn); });
+                btn.addEventListener('touchend', (e) => { e.preventDefault(); onButtonRelease(btn.dataset.key, btn); });
+            });
+        }
+
+        function createRipple(event, element) {
+            const circle = document.createElement('span');
+            const diameter = Math.max(element.clientWidth, element.clientHeight);
+            const radius = diameter / 2;
+            circle.style.width = circle.style.height = `${diameter}px`;
+            circle.style.left = `${event.clientX - element.offsetLeft - radius}px`;
+            circle.style.top = `${event.clientY - element.offsetTop - radius}px`;
+            circle.classList.add('ripple');
+            const ripple = element.getElementsByClassName('ripple')[0];
+            if (ripple) ripple.remove();
+            element.appendChild(circle);
+        }
+
+        function onButtonPress(key, el) {
+            if (!key) return;
+            if (document.body.classList.contains('theme-neon') && el && event) createRipple(event, el);
+            if (el && key !== 'MULTI2') el.classList.add('active-hold');
+            
+            if (isMacroRecording) macroEvents.push({t: Date.now() - macroStartTime, type: 'PRESS', key: key});
+            
+            if (key === 'SHIFT') {
+                isShiftOn = !isShiftOn;
+                if(isShiftOn) el.classList.add('active-hold'); else el.classList.remove('active-hold');
+                return;
+            }
+            if (key === 'MULTI2') {
+                isMulti2On = !isMulti2On;
+                if(isMulti2On) {
+                    if (el) el.classList.add('active-hold');
+                    triggerMappingEvent('MULTI2', 1);
+                } else {
+                    if (el) el.classList.remove('active-hold');
+                    triggerMappingEvent('MULTI2', 0);
+                }
+                return;
+            }
+            
+            if (key === '◤') { triggerMappingEvent('◀', 1); triggerMappingEvent('▲', 1); return; }
+            if (key === '◥') { triggerMappingEvent('▶', 1); triggerMappingEvent('▲', 1); return; }
+            if (key === '◣') { triggerMappingEvent('◀', 1); triggerMappingEvent('▼', 1); return; }
+            if (key === '◢') { triggerMappingEvent('▶', 1); triggerMappingEvent('▼', 1); return; }
+            
+            let lookupKey = key;
+            if (key.length === 1 && key.match(/[a-z]/i) && !isShiftOn) {
+                lookupKey = key + '_lower';
+            }
+            
+            triggerMappingEvent(lookupKey, 1);
+            
+            if (['SCAN', 'JOG', 'INDEX'].includes(key)) {
+                ['scan', 'jog', 'index'].forEach(k => document.getElementById('ind-'+k).classList.remove('active'));
+                document.getElementById('ind-'+key.toLowerCase()).classList.add('active');
+            }
+            if (key === 'Z\nDRIVE') {
+                isZDriveOn = true;
+                document.getElementById('ind-zdrive').classList.add('warning');
+                document.getElementById('status-overlay').style.display = 'block';
+            }
+        }
+
+        function onButtonRelease(key, el) {
+            if (!key) return;
+            if (key === 'SHIFT' || key === 'MULTI2') return;
+            
+            if (el) el.classList.remove('active-hold');
+            if (isMacroRecording) macroEvents.push({t: Date.now() - macroStartTime, type: 'RELEASE', key: key});
+            
+            if (key === '◤') { triggerMappingEvent('◀', 0); triggerMappingEvent('▲', 0); return; }
+            if (key === '◥') { triggerMappingEvent('▶', 0); triggerMappingEvent('▲', 0); return; }
+            if (key === '◣') { triggerMappingEvent('◀', 0); triggerMappingEvent('▼', 0); return; }
+            if (key === '◢') { triggerMappingEvent('▶', 0); triggerMappingEvent('▼', 0); return; }
+            
+            let lookupKey = key;
+            if (key.length === 1 && key.match(/[a-z]/i) && !isShiftOn) {
+                lookupKey = key + '_lower';
+            }
+            triggerMappingEvent(lookupKey, 0);
+            
+            if (key === 'Z\nDRIVE') {
+                isZDriveOn = false;
+                document.getElementById('ind-zdrive').classList.remove('warning');
+                document.getElementById('status-overlay').style.display = 'none';
+            }
+        }
+
+        function triggerMappingEvent(key, state) {
+            const pinKey = key + '_pins';
+            const cableKey = key + '_cable';
+            const txEntry = document.getElementById('tx-entry');
+            
+            if (UF_MAPPINGS[pinKey]) {
+                const pins = UF_MAPPINGS[pinKey];
+                const cable = UF_MAPPINGS[cableKey] || '';
+                const baseName = key.replace('\n', '_');
+                
+                let cmd = [baseName];
+                if (cable) cmd.push(`CABLE:${cable}`);
+                cmd.push(`PINS:${pins}`);
+                cmd.push(`STATE:${state}`);
+                
+                const cmdStr = cmd.join(',');
+                txEntry.value = cmdStr;
+                txEntry.style.color = "white";
+                sendData(cmdStr);
+            } else {
+                if (state === 1) {
+                    if (key.startsWith('X') && key.includes('_Y')) {
+                        txEntry.value = `[${key}_UNMAPPED]`;
+                        txEntry.style.color = "white";
+                    } else {
+                        let displayChar = key;
+                        if(key.includes('_lower')) displayChar = key.charAt(0).toLowerCase();
+                        else if(key === 'SPACE') displayChar = ' ';
+                        else if(key === 'ENT') { sendData(txEntry.value); return; }
+                        else if(key === 'BS') { txEntry.value = txEntry.value.substring(0, txEntry.value.length-1); return; }
+                        else if(key === 'DEL') { txEntry.value = ''; return; }
+                        
+                        txEntry.value += displayChar;
+                        txEntry.style.color = "white";
+                    }
+                }
+            }
+        }
+
+        // =======================
+        // Macros
+        // =======================
+        function toggleMacroUI() {
+            const ui = document.getElementById('macro-ui');
+            ui.style.display = ui.style.display === 'none' ? 'flex' : 'none';
+        }
+        function toggleMacroRecord() {
+            const btn = document.getElementById('btn-rec');
+            if (isMacroRecording) {
+                isMacroRecording = false;
+                btn.textContent = '⏺ Rec'; btn.classList.remove('btn-danger');
+                appendLog('MACRO', `Recording stopped. ${macroEvents.length} events saved.`);
+            } else {
+                if (isMacroPlaying) return;
+                macroEvents = [];
+                isMacroRecording = true;
+                macroStartTime = Date.now();
+                btn.textContent = '⏹ Stop'; btn.classList.add('btn-danger');
+                appendLog('MACRO', 'Recording started...');
+            }
+        }
+        function toggleMacroPlay() {
+            const btn = document.getElementById('btn-play');
+            if (isMacroPlaying) {
+                isMacroPlaying = false;
+                playTimeouts.forEach(clearTimeout); playTimeouts = [];
+                btn.textContent = '▶ Play'; btn.classList.remove('btn-danger');
+                appendLog('MACRO', 'Playback stopped.');
+            } else {
+                if (isMacroRecording || macroEvents.length === 0) return;
+                isMacroPlaying = true;
+                btn.textContent = '⏹ Stop'; btn.classList.add('btn-danger');
+                appendLog('MACRO', 'Playback started...');
+                
+                macroEvents.forEach(ev => {
+                    const tId = setTimeout(() => {
+                        if(!isMacroPlaying) return;
+                        const el = document.querySelector(`.k-btn[data-key="${ev.key}"]`);
+                        if (ev.type.includes('PRESS')) onButtonPress(ev.key, el);
+                        else onButtonRelease(ev.key, el);
+                    }, ev.t);
+                    playTimeouts.push(tId);
+                });
+                
+                const maxTime = macroEvents.length ? macroEvents[macroEvents.length-1].t + 100 : 0;
+                setTimeout(() => {
+                    if(isMacroPlaying) toggleMacroPlay();
+                }, maxTime);
+            }
+        }
+
+        // =======================
+        // PC Sync & Modals
+        // =======================
+        function togglePCKeyboard() { pcSync = !pcSync; appendLog('SYS', 'PC Sync ' + (pcSync?'ON':'OFF')); }
+        const keyMapObj = { 'ArrowUp':'UP', 'ArrowDown':'DOWN', 'ArrowLeft':'◀', 'ArrowRight':'▶', 'Enter':'ENT', 'Backspace':'BS', 'Delete':'DEL', ' ':'SPACE', 'Shift':'SHIFT' };
+        function handlePCKeyDown(e) {
+            if(!pcSync || document.activeElement.tagName === 'INPUT') return;
+            const mapped = keyMapObj[e.key] || e.key.toUpperCase();
+            const el = document.querySelector(`.k-btn[data-key="${mapped}"]`);
+            if(el) onButtonPress(mapped, el);
+        }
+        function handlePCKeyUp(e) {
+            if(!pcSync || document.activeElement.tagName === 'INPUT') return;
+            const mapped = keyMapObj[e.key] || e.key.toUpperCase();
+            const el = document.querySelector(`.k-btn[data-key="${mapped}"]`);
+            if(el) onButtonRelease(mapped, el);
+        }
+
+        function toggleModal(id) {
+            const el = document.getElementById(id);
+            el.style.display = el.style.display === 'flex' ? 'none' : 'flex';
+        }
+        function changeTheme() {
+            const t = document.getElementById('theme-select').value;
+            document.body.className = '';
+            if(t !== 'original') document.body.classList.add('theme-' + t);
+        }
+        
+        function showAbout() {
+            alert("UF200SA Web Control System\nVersion 2.90\nCreated by ybh (HTML Translation)");
+        }
+    </script>
+</body>
+</html>
